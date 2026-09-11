@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.figure import Figure
-from scipy.signal import spectrogram, windows, hilbert
+from scipy.signal import spectrogram, windows
+from scipy.signal import hilbert as scipy_hilbert
 from scipy.optimize import curve_fit
 from datetime import datetime
 from pathlib import Path
@@ -80,6 +81,9 @@ def _select_time_data(scan: Scan,
     t_mask = (the_tlin >= t_range[0]) & (the_tlin <= t_range[1])
     the_vdata = the_vdata[:,t_mask,:]
     the_tlin = the_tlin[t_mask]
+    if the_tlin.size == 0:
+        raise IndexError("No time data remains after cropping! Your t_range most likely does not overlap with the selected data.")
+    
     return the_vdata, the_tlin
 
 #TODO could also allow indexing with arrays like x=[1,4,6] to extract non-contiguous regions. This would require use of np.ix(..)
@@ -90,6 +94,18 @@ def _select_spatial_data(data: np.ndarray,
     """Helper function to extract subset of data.
     This should generally be called after _select_time_data(..), and has inputs structured accordingly.
     If x/y is omitted, no indexing is performed over that dimension (via use of slice(None))."""
+    #validate x,y inputs
+    ny, _, nx = np.shape(data)
+    if x is None: x = nx // 2
+    if y is None: y = ny // 2
+    if not -nx <= x < nx:
+        raise IndexError(
+             f"x={x} outside valid range [{-nx}, {nx-1}]"
+             )
+    if not -ny <= y < ny:
+        raise IndexError(
+             f"y={y} outside valid range [{-ny}, {ny-1}]"
+             )
     #allows for negative indices to also be handled
     def idx(i: int | None, size: int) -> slice:
         if i is None:
@@ -191,17 +207,6 @@ def ascan(scan: Scan,
     """Show voltage trace at location (x,y) by index.
     Allows for optional temporal cropping.
     Returns dictionary containing tlin, vdata."""
-    #1. validate x,y inputs
-    if x is None: x = scan.nx // 2
-    if y is None: y = scan.ny // 2
-    if not -scan.nx <= x < scan.nx:
-        raise IndexError(
-             f"x={x} outside valid range [{-scan.nx}, {scan.nx-1}]"
-             )
-    if not -scan.ny <= y < scan.ny:
-        raise IndexError(
-             f"y={y} outside valid range [{-scan.ny}, {scan.ny-1}]"
-             )
     #1. select data
     the_vdata, the_tlin = _select_time_data(scan, config,
                                             crop_start_spike, crop_end,
@@ -212,18 +217,20 @@ def ascan(scan: Scan,
                    "vdata": singlepoint}
     #only generate fig if necessary
     if config.show_figs or save:
-        #3. plot
+        #2. plot
         fig, ax = plt.subplots()
         ax.plot(the_tlin, singlepoint, label="Data", color="b")
         if show_analysis_range:
             t_range = _get_default_t_range(scan,config)
             ax.vlines(t_range, ymin=np.min(singlepoint), ymax=np.max(singlepoint), color="k", linestyle="--")
-        #4. format plot
+        #3. format plot
         ax.set_xlim(the_tlin[0], the_tlin[-1]+scan.dt)
+        if x is None: x = scan.nx // 2
+        if y is None: y = scan.ny // 2
         ax.set_title(f"A-scan for point\n({x},{y}) at ({round(scan.xlin[x])},{round(scan.ylin[y])}) mm")
         ax.set_xlabel(r"Time (μs)")
         ax.set_ylabel("Voltage (mV)")
-        #5. finalise plot
+        #4. finalise plot
         if save:
             tstamp = _timestamp()
             filename = f"Ascan ({x},{y}) [{tstamp}].png"
@@ -234,42 +241,31 @@ def ascan(scan: Scan,
         _print_lists(return_data)
     return return_data
 
-def plot_hilbert(scan: Scan,
-                 config: Config,
-                 x: int | None = None,
-                 y: int | None = None,
-                 save: bool = False,
-                 crop_start_spike: bool = False,
-                 crop_end: bool = False,
-                 t_range: tuple[float, float] = (-np.inf, np.inf),
-                 f_range: tuple[float, float] | None = None,
-                 show_analysis_range: bool = False,
-                 smoothing_n: int = 100,
-                 ) -> tuple[np.ndarray, np.ndarray]:
+def hilbert(scan: Scan,
+            config: Config,
+            x: int | None = None,
+            y: int | None = None,
+            save: bool = False,
+            crop_start_spike: bool = False,
+            crop_end: bool = False,
+            t_range: tuple[float, float] = (-np.inf, np.inf),
+            f_range: tuple[float, float] | None = None,
+            show_analysis_range: bool = True,
+            smoothing_n: int = 100,
+            ) -> tuple[np.ndarray, np.ndarray]:
     """Show voltage trace and hilbert envelope at location (x,y) by index.
     Additionally, plot hilbert phase and derived instantaneous frequency (smoothed by a moving average)
     Returns dictionary containing tlin, vdata, hilbert_data."""
-    #1. validate x,y inputs
-    if x is None: x = scan.nx // 2
-    if y is None: y = scan.ny // 2
-    if not -scan.nx <= x < scan.nx:
-        raise IndexError(
-             f"x={x} outside valid range [{-scan.nx}, {scan.nx-1}]"
-             )
-    if not -scan.ny <= y < scan.ny:
-        raise IndexError(
-             f"y={y} outside valid range [{-scan.ny}, {scan.ny-1}]"
-             )
-    #2. select data
+    #1. select data
     the_vdata_t, the_tlin = _select_time_data(scan, config,
                                               crop_start_spike, crop_end,
                                               t_range)
     singlepoint = _select_spatial_data(the_vdata_t,
                                      x, y)[0,:,0]
-    #3. calculate hilbert properties
+    #2. calculate hilbert properties
     #calculate and subtract mean as an estimate of DC offset
     DC_offset = np.mean(singlepoint)
-    hilb = hilbert(singlepoint - DC_offset)
+    hilb = scipy_hilbert(singlepoint - DC_offset)
     
     phase = np.unwrap(np.angle(hilb))
     freq = np.gradient(phase, scan.dt) / (2*np.pi) * 1e3 #constants convert Mrad/s->MHz->kHz
@@ -284,7 +280,7 @@ def plot_hilbert(scan: Scan,
                    "hilbert_data": hilb}
     #only generate fig if necessary
     if config.show_figs or save:
-        #4. plot
+        #3. plot
         fig, [ax, ax_phase, ax_freq] = plt.subplots(nrows=3, height_ratios=[3,1,1], sharex=True)
         figsize = fig.get_size_inches()
         fig.set_size_inches(figsize[0], 5/3*figsize[1])
@@ -299,9 +295,11 @@ def plot_hilbert(scan: Scan,
         
         ax_phase.plot(the_tlin, phase, color="tab:green")
         ax_freq.plot(the_tlin[((smoothing_n-1)//2):-((smoothing_n)//2)], averaged_freq, color="r")
-        #5. format plot
+        #4. format plot
         ax.legend()
         ax.set_xlim(the_tlin[0], the_tlin[-1]+scan.dt)
+        if x is None: x = scan.nx // 2
+        if y is None: y = scan.ny // 2
         ax.set_title(f"Hilbert transform for point\n({x},{y}) at ({round(scan.xlin[x])},{round(scan.ylin[y])}) mm")
         ax.set_xlabel(r"Time (μs)")
         ax.set_ylabel("Voltage (mV)")
@@ -335,24 +333,13 @@ def sono(scan: Scan,
     The sonogram is generated using a short time Fourier transform,
     producing the spectral power density (SPD) in mV^2/kHz units.
     Returns dictionary containing f, t, SPD."""
-    #1. validate x,y inputs
-    if x is None: x = scan.nx // 2 
-    if y is None: y = scan.ny // 2
-    if not -scan.nx <= x < scan.nx:
-        raise IndexError(
-             f"x={x} outside valid range [{-scan.nx}, {scan.nx-1}]"
-             )
-    if not -scan.ny <= y < scan.ny:
-        raise IndexError(
-             f"y={y} outside valid range [{-scan.ny}, {scan.ny-1}]"
-             )
-    #2. select data
+    #1. select data
     the_vdata, the_tlin = _select_time_data(scan, config,
                                             crop_start_spike, crop_end,
                                             t_range)
     singlepoint = _select_spatial_data(the_vdata, 
                                        x, y)[0,:,0]
-    #3. calculate spectrogram
+    #2. calculate spectrogram
     f, t, Sxx = _spectrogram_helper(config,
                                     singlepoint, the_tlin,
                                     f_range,
@@ -363,17 +350,19 @@ def sono(scan: Scan,
     
     #only generate fig if necessary
     if config.show_figs or save:
-        #4. plot
+        #3. plot
         fig, ax = plt.subplots()
         mesh = ax.pcolormesh(t, f, Sxx, cmap="plasma")
         cbar = fig.colorbar(mesh, ax=ax, pad=0.01)
-        #5. format plot
+        #4. format plot
         cbar.ax.set_xlabel("  mV$^2\\!$/kHz", labelpad=10)
         cbar.ax.xaxis.set_label_position("top")
         ax.set_xlabel("Time (μs)")
         ax.set_ylabel("Frequency (kHz)")
+        if x is None: x = scan.nx // 2
+        if y is None: y = scan.ny // 2
         ax.set_title(f"Sonogram for point\n({x},{y}) at ({round(scan.xlin[x])},{round(scan.ylin[y])}) mm")
-        #6. finalise plot
+        #5. finalise plot
         if save:
             tstamp = _timestamp()
             filename = f"Sonogram ({x},{y}) [{tstamp}].png"
@@ -409,7 +398,7 @@ def singletime(scan: Scan,
     #only generate fig if necessary
     if config.show_figs or save:
         if scan.is_point:
-            print("Cannot generate singletime plot for a single point. ")
+            print("\nWarning: cannot generate singletime plot for a point scan.\n")
             return return_data
         #3. plot; format plot
         fig, ax = plt.subplots()
@@ -465,7 +454,7 @@ def max_amp(scan: Scan,
     #only generate fig if necessary
     if config.show_figs or save:
         if scan.is_point:
-            print("Cannot generate max_amp plot for singlepoint. ")
+            print("\nWarning: cannot generate max_amp plot for a point scan.\n")
             return return_data
         #2. plot; format plot
         fig, ax = plt.subplots()
@@ -474,13 +463,13 @@ def max_amp(scan: Scan,
             ax.set_xlim(scan.xlin[0],scan.xlin[-1])
             ax.set_xlabel("x position (mm)")
             ax.set_ylabel("Max. voltage (mV)")
-            title = f"Maximum voltage across\ny={round(scan.ylin[0],3)} mm, t$\\in${list(tlin_range)} μs"
+            title = f"Maximum voltage across\ny={round(scan.ylin[0],3)} mm, t$\\in${[round(t,3) for t in tlin_range]} μs"
         elif scan.is_y_scan:
             ax.plot(scan.ylin, max_vdata[:,0])
             ax.set_xlim(scan.ylin[0],scan.ylin[-1])
             ax.set_xlabel("y position (mm)")
             ax.set_ylabel("Max. voltage (mV)")
-            title = f"Maximum voltage across\nx={round(scan.xlin[0],3)} mm, t$\\in${list(tlin_range)} μs"
+            title = f"Maximum voltage across\nx={round(scan.xlin[0],3)} mm, t$\\in${[round(t,3) for t in tlin_range]} μs"
         elif scan.is_xy_scan:
             mesh = ax.pcolormesh(scan.xlin, scan.ylin, max_vdata)
             cbar = fig.colorbar(mesh, ax=ax, pad=0.01)
@@ -489,7 +478,7 @@ def max_amp(scan: Scan,
             ax.invert_yaxis()
             ax.set_xlabel("x position (mm)")
             ax.set_ylabel("y position (mm)")
-            title = f"Maximum voltage,\nt$\\in${list(tlin_range)} μs"
+            title = f"Maximum voltage,\nt$\\in${[round(t,3) for t in tlin_range]} μs"
         ax.set_title(title)
         #3. finalise plot
         if save:
@@ -522,9 +511,9 @@ def sono_amp(scan: Scan,
     #2. calculate peak sonogram values for each x,y
     amp_peaks = np.empty((scan.ny, scan.nx))
     if (scan.is_xy_scan or scan.is_y_scan) and config.print_progress:
-        print("row: ", end="")
+        print("sono_amp row: ", end="")
     elif scan.is_x_scan and config.print_progress:
-        print("col: ", end="")
+        print("sono_amp col: ", end="")
     for yi in range(scan.ny):
         if (scan.is_xy_scan or scan.is_y_scan) and config.print_progress:
             print(f"{yi} ", end="")
@@ -547,7 +536,7 @@ def sono_amp(scan: Scan,
     #only generate fig if necessary
     if config.show_figs or save:
         if scan.is_point:
-            print("Cannot generate sono_amp plot for singlepoint. ")
+            print("\nWarning: cannot generate sono_amp plot for a point scan.\n")
             return return_data
         #3. plot; format plot
         fig, ax = plt.subplots()
@@ -556,13 +545,13 @@ def sono_amp(scan: Scan,
             ax.plot(scan.xlin, amp_peaks)
             ax.set_xlabel("x position (mm)")
             ax.set_ylabel(f"Peak SPD (mV$^2$/kHz)")
-            title = f"Peak spectral power density across\ny={round(scan.ylin[0],3)} mm, t$\\in${list(tlin_range)} μs"
+            title = f"Peak spectral power density across\ny={round(scan.ylin[0],3)} mm, t$\\in${[round(t,3) for t in tlin_range]} μs"
         elif scan.is_y_scan:
             amp_peaks = amp_peaks[:,0]
             ax.plot(scan.ylin, amp_peaks)
             ax.set_xlabel("y position (mm)")
             ax.set_ylabel(f"Peak SPD (mV$^2$/kHz)")
-            title = f"Peak spectral power density across\nx={round(scan.xlin[0],3)} mm, t$\\in${list(tlin_range)} μs"
+            title = f"Peak spectral power density across\nx={round(scan.xlin[0],3)} mm, t$\\in${[round(t,3) for t in tlin_range]} μs"
         elif scan.is_xy_scan:
             ax.invert_yaxis()
             mesh = ax.pcolormesh(scan.xlin, scan.ylin, amp_peaks, cmap="plasma")
@@ -571,7 +560,7 @@ def sono_amp(scan: Scan,
             cbar.ax.xaxis.set_label_position("top")
             ax.set_xlabel("x position (mm)")
             ax.set_ylabel("y position (mm)")
-            title = f"Peak spectral power density,\nt$\\in${list(tlin_range)} μs"
+            title = f"Peak spectral power density,\nt$\\in${[round(t,3) for t in tlin_range]} μs"
         ax.set_title(title)
         #4. finalise plot
         if save:
@@ -603,9 +592,9 @@ def sono_int(scan: Scan,
     #2. calculate the peak integrated sonogram value for each x,y
     int_peaks = np.empty((scan.ny, scan.nx))
     if (scan.is_xy_scan or scan.is_y_scan) and config.print_progress:
-        print("row: ", end="")
+        print("sono_int row: ", end="")
     elif scan.is_x_scan and config.print_progress:
-        print("col: ", end="")
+        print("sono_int col: ", end="")
     for yi in range(scan.ny):
         if (scan.is_xy_scan or scan.is_y_scan) and config.print_progress:
             print(f"{yi} ", end="")
@@ -630,7 +619,7 @@ def sono_int(scan: Scan,
     #only generate fig if necessary
     if config.show_figs or save:
         if scan.is_point:
-            print("Cannot generate sono_int plot for singlepoint. ")
+            print("\nWarning: cannot generate sono_int plot for a point scan.\n")
             return return_data
         #3. plot; format plot
         fig, ax = plt.subplots()
@@ -638,12 +627,12 @@ def sono_int(scan: Scan,
             ax.plot(scan.xlin, int_peaks[0])
             ax.set_xlabel("x position (mm)")
             ax.set_ylabel("Peak power (mV$^2$)")
-            title = f"Peak sonogram power across\ny={round(scan.ylin[0],1)} mm, t$\\in${list(tlin_range)} μs"
+            title = f"Peak sonogram power across\ny={round(scan.ylin[0],1)} mm, t$\\in${[round(t,3) for t in tlin_range]} μs"
         elif scan.is_y_scan:
             ax.plot(scan.ylin, int_peaks[:,0])
             ax.set_xlabel("y position (mm)")
             ax.set_ylabel("Peak power (mV$^2$)")
-            title = f"Peak sonogram power across\nx={round(scan.xlin[0],1)} mm, t$\\in${list(tlin_range)} μs"
+            title = f"Peak sonogram power across\nx={round(scan.xlin[0],1)} mm, t$\\in${[round(t,3) for t in tlin_range]} μs"
         elif scan.is_xy_scan:
             mesh = ax.pcolormesh(scan.xlin, scan.ylin, int_peaks, cmap="plasma")
             cbar = fig.colorbar(mesh, ax=ax, pad=0.01)
@@ -652,7 +641,7 @@ def sono_int(scan: Scan,
             ax.invert_yaxis()
             ax.set_xlabel("x position (mm)")
             ax.set_ylabel("y position (mm)")
-            title = f"Peak sonogram power,\nt$\\in${list(tlin_range)} μs"
+            title = f"Peak sonogram power,\nt$\\in${[round(t,3) for t in tlin_range]} μs"
         ax.set_title(title)
         #finalise
         if save:
@@ -678,6 +667,10 @@ def plot_xt(scan: Scan,
     Default y is centred.
     Returns dictionary containing t_samples, xlin, vdata_sampled."""
     if y is None: y = scan.ny // 2
+    if not -scan.ny <= y < scan.ny:
+        raise IndexError(
+             f"y={y} outside valid range [{-scan.ny}, {scan.ny-1}]"
+             )
     the_vdata, the_tlin = _select_time_data(scan, config,
                                             crop_start_spike, crop_end,
                                             t_range)
@@ -690,6 +683,12 @@ def plot_xt(scan: Scan,
     
     #only generate fig if necessary
     if config.show_figs or save:
+        if scan.is_point:
+            print("\nWarning: cannot generate plot_xt plot for a point scan.\n")
+            return return_data
+        elif scan.is_y_scan:
+            print("\nWarning: cannot generate plot_xt plot for a y-scan.\n")
+            return return_data
         fig, ax = plt.subplots()
         ax.invert_yaxis()
         
@@ -721,6 +720,10 @@ def plot_yt(scan: Scan,
             show_analysis_range: bool = False
             ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if x is None: x = scan.nx // 2
+    if not -scan.nx <= x < scan.nx:
+        raise IndexError(
+             f"x={x} outside valid range [{-scan.nx}, {scan.nx-1}]"
+             )
     """plot the space-time voltage distribution for data over a single x position.
     Default x is centred.
     Returns dictionary containing t_samples, ylin, vdata_sampled."""
@@ -736,6 +739,11 @@ def plot_yt(scan: Scan,
     
     #only generate fig if necessary
     if config.show_figs or save:
+        if scan.is_point:
+            print("\nWarning: cannot generate plot_yt plot for a point scan.\n")
+            return return_data
+        elif scan.is_x_scan:
+            print("\nWarning: cannot generate plot_yt plot for an x-scan.\n")
         fig, ax = plt.subplots()
         ax.invert_yaxis()#TODO check maybe not
         
@@ -795,9 +803,9 @@ def animate_xy(scan: Scan,
     ax.set_ylabel("y position (mm)")
     ax.set_title(f"Spatial voltage distr.,\nt={the_tlin[t_indices[0]]:.3f} μs")
     fig.tight_layout(pad=0.15)
-    ani=FuncAnimation(fig, update_anim, frames=config.time_samples_anim, interval=1000/24)
     if config.print_progress:
-        print()
+        print("Loading animation...", end="")
+    ani=FuncAnimation(fig, update_anim, frames=config.time_samples_anim, interval=1000/24)
     return_data = {"animation": ani,
                    "xlin": scan.xlin, "ylin": scan.ylin,
                    "t_samples": the_tlin[t_indices],
@@ -822,6 +830,8 @@ def animate_xy(scan: Scan,
         fig.canvas.flush_events()
     else:
         plt.close(fig)
+    if config.print_progress:
+        print("loaded. ")
     return return_data
 
 def show_data(scan: Scan,
