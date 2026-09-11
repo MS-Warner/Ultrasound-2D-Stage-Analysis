@@ -105,7 +105,9 @@ F1Rl_sources = line(start = F1Rl_pos[0], end = F1Rl_pos[1],
                     mirror_x = True)
 sources = D1l_sources + F1Ll_sources + F1Rl_sources
 
+
 sim = Sim(grid, sources)
+show_sources(sim)
 print("Simulating...",end="")
 S_sim = simulate(sim, name="198 sim")
 print("done. ")
