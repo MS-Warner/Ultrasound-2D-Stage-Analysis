@@ -152,7 +152,15 @@ def show_sources(sim: Sim):
               labelspacing=0.2
               )
     ax.invert_yaxis()
-    plt.show()
+    fig.tight_layout(pad=0.15)
+    if not plt.isinteractive():
+        #only necessary without plt.ion()
+        plt.show(block=False)
+    #these ensure the figure is actually rendered before the
+    # next one starts loading, instead of just an empty window.
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+    
     return xs, ys
 
 def envelope(A, r_masked, rmin, k_env):
