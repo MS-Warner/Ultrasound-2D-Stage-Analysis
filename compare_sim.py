@@ -5,7 +5,7 @@ from pathlib import Path
 #custom packages
 from lib.data import Config
 from lib.loading import load_scan, ScanLoadError
-from lib.analysis import (plot_setup, ascan, plot_hilbert,
+from lib.analysis import (plot_setup, ascan, hilbert,
     singletime, max_amp, sono, sono_amp, sono_int,
     plot_xt, plot_yt, animate_xy, show_data,
     FWHM, halfsine, fit_halfsine)
@@ -37,7 +37,7 @@ C=Config(
 
 #load measured data
 S = load_scan(198,C)
-H=plot_hilbert(S,C,crop_start_spike=True,crop_end=True)
+H=hilbert(S,C,crop_start_spike=True,crop_end=True)
 C.show_figs = True #enable plotting
 tlin = H["tlin"]
 DCo = H["DC_offset"]

@@ -6,7 +6,7 @@ from pathlib import Path
 from lib.data import Config
 from lib.loading import load_scan, ScanLoadError
 #this could be from lib.analysis import *, but relevant functions are listed here explicitly.
-from lib.analysis import (plot_setup, ascan, plot_hilbert,
+from lib.analysis import (plot_setup, ascan, hilbert,
     singletime, max_amp, sono, sono_amp, sono_int,
     plot_xt, plot_yt, animate_xy, show_data,
     FWHM, halfsine, fit_halfsine)
