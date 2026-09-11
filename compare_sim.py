@@ -32,13 +32,14 @@ C=Config(
     #plot config (optional)
     show_figs = False,
     print_progress = False, print_lists = False,
+    show_scan_name = True,
     time_samples_anim = 201, time_samples_1D = 1001,
     )
 
 #load measured data
 S = load_scan(198,C)
 H=hilbert(S,C,crop_start_spike=True,crop_end=True)
-C.show_figs = True #enable plotting
+C.show_figs = True #enable plotting after hilbert
 tlin = H["tlin"]
 DCo = H["DC_offset"]
 hilb = H["hilbert_data"]
@@ -105,13 +106,15 @@ F1Rl_sources = line(start = F1Rl_pos[0], end = F1Rl_pos[1],
 sources = D1l_sources + F1Ll_sources + F1Rl_sources
 
 sim = Sim(grid, sources)
+print("Simulating...",end="")
 S_sim = simulate(sim, name="198 sim")
+print("done. ")
 
-ascan(S, C, y=-1,
+ascan(S, C, y=-1, save=True,
       crop_start_spike=True, crop_end=True)
-ascan(S_sim, C, y=-1,
+ascan(S_sim, C, y=-1, save=True,
       crop_start_spike=True, crop_end=True)
 
-sono_int(S,C)
-sono_int(S_sim,C)
+sono_int(S,C, save=True)
+sono_int(S_sim,C, save=True)
 

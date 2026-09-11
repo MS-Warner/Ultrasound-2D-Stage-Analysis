@@ -45,7 +45,6 @@ for scan_id in scan_ids:
         S = load_scan(scan_id, C)
     except ScanLoadError as e:
         print(f"Scan {scan_id} failed: {e}")
-        failed_scan_ids.append(scan_id)
         continue
     scans += [S]
 """
