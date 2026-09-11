@@ -47,7 +47,7 @@ for scan_id in scan_ids:
         print(f"Scan {scan_id} failed: {e}")
         continue
     scans += [S]
-"""
+
 print("\nNote: many different options have been selected for these scans for demonstration purposes. Because of this, the plots may appear inconsistent or unuseful.")
 #for a point-scan
 input("\nPress enter to generate point-scan plots (scan 227): ")
@@ -79,9 +79,9 @@ SA =   sono_amp(scans[0], C)
 SI =   sono_int(scans[0], C, f_range=(300,1000))
 YT =    plot_yt(scans[0], C)
 #show_data will call plot_yt   
-"""
+
 #for a 2D-scan
-#input("\nPress enter to generate 2D-scan plots (scan 198): ")
+input("\nPress enter to generate 2D-scan plots (scan 198): ")
 As =      ascan(scans[1], C, y=-1, show_analysis_range=False)
 Hi =    hilbert(scans[1], C, x=12, y=27, f_range=(50,250))
 So =       sono(scans[1], C)
@@ -91,8 +91,6 @@ SA =   sono_amp(scans[1], C)
 SI =   sono_int(scans[1], C, crop_end=False)
 An = animate_xy(scans[1], C, save=True, crop_end = True)
 #show_data will call animate_xy 
-
-"""
 
 #simulation
 
@@ -121,4 +119,3 @@ Ssim = simulate(sim, name = "testsim")
 
 show_sources(sim)
 out = show_data(Ssim, C, save = True)
-"""
