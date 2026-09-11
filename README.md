@@ -9,15 +9,12 @@ I developed the code for use in Python's IDLE, using matplotlib's interactive mo
 Plots produced are not intended to be of publishable quality, and were used for rapid analysis shortly after obtaining data. I think the plots are best for qualitative understanding, but the analysis is proper and quantitative results are very easy to get out.  
 
 ## Prerequisites:
-Python 3.10+
+Python 3.10+  
+The following Python libraries:  
+- standard: pathlib, datetime, dataclasses, re  
+- additional: numpy, scipy, matplotlib  
 
-The following Python libraries:
-
-standard: pathlib, datetime, dataclasses, re
-
-additional: numpy, scipy, matplotlib
-
-### Capabilities
+## Capabilities
 - converting plaintext lvm data to faster, binary npz data  
 - loading an arbitrary number of different scans  
 - simulating non-dispersive waves using Huygens' principle  
@@ -37,7 +34,7 @@ additional: numpy, scipy, matplotlib
   - animations  
 - saving all plots for later use  
 
-### Structure
+## Structure
 - data.py  
   - contains two dataclasses, Config and Scan.  
   - Config contains shared details relating to analysis.  
